@@ -1,0 +1,18 @@
+name: Model Usage Log
+
+on: [pull_request]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for AI metrics entries
+        run: |
+          if [ -d ".ai-metrics" ]; then
+            if ! ls .ai-metrics/*.md >/dev/null 2>&1; then
+              echo "WARNING: No AI metrics entries found in .ai-metrics/"
+            fi
+          else
+            echo "WARNING: .ai-metrics directory not found"
+          fi
