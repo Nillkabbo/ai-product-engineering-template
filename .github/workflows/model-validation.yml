@@ -1,0 +1,119 @@
+name: AI Model & Phase Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Check Current Phase
+        id: check-phase
+        run: |
+          echo "Running phase check..."
+          python scripts/check-phase.py || true
+          PHASE_EXIT=$?
+          echo "phase_exit=$PHASE_EXIT" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      
+      - name: Check Approvals
+        id: check-approvals
+        run: |
+          echo "Checking approval status..."
+          python scripts/check-approvals.py
+        continue-on-error: true
+      
+      - name: Validate Model Consistency
+        id: validate-model
+        run: |
+          echo "Validating model consistency..."
+          python scripts/validate-model.py
+        continue-on-error: true
+      
+      - name: Post Validation Summary
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            
+            // Run checks and capture output
+            let phaseOutput = '';
+            let approvalOutput = '';
+            let modelOutput = '';
+            
+            try {
+              phaseOutput = execSync('python scripts/check-phase.py', {encoding: 'utf-8'});
+            } catch (e) {
+              phaseOutput = e.stdout || e.message;
+            }
+            
+            try {
+              approvalOutput = execSync('python scripts/check-approvals.py', {encoding: 'utf-8'});
+            } catch (e) {
+              approvalOutput = e.stdout || e.message;
+            }
+            
+            try {
+              modelOutput = execSync('python scripts/validate-model.py', {encoding: 'utf-8'});
+            } catch (e) {
+              modelOutput = e.stdout || e.message;
+            }
+            
+            // Create comment body
+            const body = `## AI Workflow Validation Report
+            
+            ### Current Phase
+            \`\`\`
+            ${phaseOutput}
+            \`\`\`
+            
+            ### Approval Status
+            \`\`\`
+            ${approvalOutput}
+            \`\`\`
+            
+            ### Model Consistency
+            \`\`\`
+            ${modelOutput}
+            \`\`\`
+            
+            ---
+            
+            **Note**: These are informational checks, not blocking. Review guidelines:
+            - [AI Workflow Guide](../docs/AI_WORKFLOW_GUIDE.md)
+            - [Model Selection Guide](../docs/MODEL_SELECTION_GUIDE.md)
+            - [Approval Gates](../docs/APPROVAL_GATES.md)
+            `;
+            
+            // Post comment
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+      
+      - name: Workflow Summary
+        run: |
+          echo "## AI Workflow Validation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Phase check complete" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Approval check complete" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Model validation complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See PR comment for detailed results" >> $GITHUB_STEP_SUMMARY
